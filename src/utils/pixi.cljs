@@ -3,7 +3,8 @@
             [oops.core :refer [oget oget+ oset! ocall!]]))
 
 (defn make-application! [html]
-  (let [app (js/PIXI.Application. (clj->js {:resizeTo html :transparent true
+  (let [app (js/PIXI.Application. (clj->js {:resizeTo html 
+                                            :transparent true
                                             ;:resolution (or js/window.devicePixelRatio 1)
                                             :antialias true}))]
     (ocall! html :appendChild (oget app :view))

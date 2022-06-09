@@ -9,7 +9,7 @@
   (when-let [{:keys [html app]} @pixi]
     (doto html
       (oset! :style.height "calc(100% - 20px)")
-      (oset! :style.width "calc(100%)"))
+      (oset! :style.width "calc(50%)"))
     (ocall! app :resize)))
 
 (def cell-width 72)
@@ -38,7 +38,7 @@
             app (pixi/make-application! (js/document.getElementById "pixi-canvas"))]
         (reset! pixi {:html html, :app app})
         (.addEventListener js/window "resize" resize-canvas)
-        (resize-canvas)
+        ;(resize-canvas)
         (let [texture-map (<! (load-textures!))
               container (js/PIXI.Container.)
               line (js/PIXI.Graphics.)]
@@ -54,23 +54,24 @@
                                  (doto (pixi/make-sprite! (texture-map value))
                                    (pixi/add-to! container))
                                  (let [[x0 y0] (offsets value)]
-                                   (print x0 y0)
                                    (doto line
                                      (ocall! :clear)
                                      (ocall! :lineStyle (clj->js {:width 3
                                                                   :color 0x5555ff
                                                                   :alpha 1}))
-                                     (ocall! :moveTo x0 y0)
-                                     )
-                                   (doseq [[x1 y1] [[cell-width 0]
-                                                    [cell-width cell-height]
-                                                    [0 cell-height]]]
-                                     (print x1 y1)
+                                     (ocall! :moveTo x0 y0))
+                                   (doseq [[x1 y1] [[1 0]
+                                                    [1 1]
+                                                    [0 1]
+                                                    [0 2]
+                                                    [1 2]
+                                                    [2 2]
+                                                    [2 1]
+                                                    [2 0]]]
                                      (ocall! line :lineTo
-                                             (+ x0 x1)
-                                             (+ y0 y1)))
+                                             (+ x0 (* cell-width x1))
+                                             (+ y0 (* cell-height y1))))
                                    (doto line
-                                     ;(ocall! :closePath)
                                      (pixi/add-to! container))))))))))
 
 (defn init [& args]

@@ -8,8 +8,8 @@
     
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>
-    <div>
+  <body style="margin: 0">
+    <div class="left-panel">
       <select name="exercises" id="exercises">
         <option value="1_1">Ejercicio 1.1</option>
         <option value="1_2">Ejercicio 1.2</option>
@@ -22,9 +22,7 @@
         <option value="5_2">Ejercicio 5.2</option>
       </select>
     </div>
-    <div id="pixi-container" class="fullscreen">
-      <div id="pixi-canvas" class="fullscreen"></div>
-    </div>
+    <div id="pixi-canvas" class="right-panel red"></div>
 
     <script src="libs/pixi.js-v6.3.0/pixi.min.js"></script>
     <script src="js/main.js"></script>
