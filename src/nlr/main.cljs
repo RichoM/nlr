@@ -12,6 +12,18 @@
       (oset! :style.width "calc(100%)"))
     (ocall! app :resize)))
 
+(def cell-width 72)
+(def cell-height 78)
+
+(def offsets {"1_1" [-72 -111]
+              "1_2" [-72 -111]
+              "2_1" [-72 77]
+              "2_2" [-72 77]
+              "3_1" [0 -38]
+              "3_2" [0 115]
+              "4_1" [108 115]
+              "4_2" [108 115]
+              "5_2" [-36 -231]})
 
 (defn load-textures! []
   (go (let [names ["1_1" "1_2" "2_1" "2_2" "3_1" "3_2" "4_1" "4_2" "5_2"]
@@ -28,7 +40,8 @@
         (.addEventListener js/window "resize" resize-canvas)
         (resize-canvas)
         (let [texture-map (<! (load-textures!))
-              container (js/PIXI.Container.)]
+              container (js/PIXI.Container.)
+              line (js/PIXI.Graphics.)]
           (doto container
             (pixi/set-position! (pixi/get-screen-center app))
             (pixi/add-to! (oget app :stage)))
@@ -39,11 +52,44 @@
                                  (print value)
                                  (ocall! container :removeChildren)
                                  (doto (pixi/make-sprite! (texture-map value))
-                                   (pixi/add-to! container)))))))))
+                                   (pixi/add-to! container))
+                                 (let [[x0 y0] (offsets value)]
+                                   (print x0 y0)
+                                   (doto line
+                                     (ocall! :clear)
+                                     (ocall! :lineStyle (clj->js {:width 3
+                                                                  :color 0x5555ff
+                                                                  :alpha 1}))
+                                     (ocall! :moveTo x0 y0)
+                                     )
+                                   (doseq [[x1 y1] [[cell-width 0]
+                                                    [cell-width cell-height]
+                                                    [0 cell-height]]]
+                                     (print x1 y1)
+                                     (ocall! line :lineTo
+                                             (+ x0 x1)
+                                             (+ y0 y1)))
+                                   (doto line
+                                     ;(ocall! :closePath)
+                                     (pixi/add-to! container))))))))))
 
 (defn init [& args]
   (print "RICHO!")
   (initialize-ui!))
+
+(defn ^:dev/before-load-async reload-begin* [done]
+  (go (<! (initialize-ui!))
+      (done)))
+
+(defn ^:dev/after-load-async reload-end* [done]
+  (try
+    (let [[old _] (reset-vals! pixi nil)]
+      (when-let [app (:app old)]
+        (ocall! app :destroy true true)))
+    (catch :default err
+      (print "ERROR" err)))
+  (done))
+
 
 (comment
   @pixi
