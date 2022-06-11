@@ -1,7 +1,8 @@
 {:source-paths ["src"]
 
  :dependencies [[binaryage/oops "0.7.1"]
-                [crate "0.2.5"]]
+                [crate "0.2.5"]
+                [clj-petitparser "0.1.1"]]
 
  :nrepl {:port 9000
          :middleware []}
