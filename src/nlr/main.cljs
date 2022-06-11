@@ -34,26 +34,33 @@
         (zipmap names textures))))
 
 (defn initialize-ui! []
-  (go (let [html (js/document.getElementById "pixi-container")
-            app (pixi/make-application! (js/document.getElementById "pixi-canvas"))]
+  (go (let [html (js/document.getElementById "pixi-canvas")
+            app (pixi/make-application! html)]
         (reset! pixi {:html html, :app app})
-        (.addEventListener js/window "resize" resize-canvas)
+        ;(.addEventListener js/window "resize" resize-canvas)
         ;(resize-canvas)
         (let [texture-map (<! (load-textures!))
               container (js/PIXI.Container.)
               line (js/PIXI.Graphics.)]
           (doto container
-            (pixi/set-position! (pixi/get-screen-center app))
+            (pixi/set-position! [0 0])
             (pixi/add-to! (oget app :stage)))
           (.addEventListener (js/document.getElementById "exercises")
                              "change"
                              (fn [e]
-                               (let [value (oget e :target.value)]
-                                 (print value)
+                               (let [selection (oget e :target.value)
+                                     texture (texture-map selection)
+                                     sprite (pixi/make-sprite! texture)]
                                  (ocall! container :removeChildren)
-                                 (doto (pixi/make-sprite! (texture-map value))
-                                   (pixi/add-to! container))
-                                 (let [[x0 y0] (offsets value)]
+                                 (pixi/add-to! sprite container)
+                                 (print (oget sprite :height))
+                                 (doto html
+                                   (oset! :style.height (str (oget sprite :height) "px"))
+                                   (oset! :style.width (str (oget sprite :width) "px")))
+                                 (ocall! app :resize)
+                                 (let [[x0 y0] (map +
+                                                    (pixi/get-center sprite)
+                                                    (offsets selection))]
                                    (doto line
                                      (ocall! :clear)
                                      (ocall! :lineStyle (clj->js {:width 3
@@ -93,7 +100,19 @@
 
 
 (comment
-  @pixi
+  (do
+    (def app (:app @pixi))
+    (def html (:html @pixi)))
+  
+  (js/console.log html)
+  (doto html
+    (oset! :style.height "300px !important"))
+(ocall! app :resize)
+  
+  (oget html :style.height)
+  html
+
+  (go (load-textures!))
 
   (-> @pixi :app pixi/get-screen-center)
 

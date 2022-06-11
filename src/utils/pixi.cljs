@@ -21,13 +21,13 @@
 
 (defn make-sprite! [texture]
   (doto (js/PIXI.Sprite. texture)
-    (oset! :anchor.x 0.5)
-    (oset! :anchor.y 0.5)))
+    (oset! :anchor.x 0.0)
+    (oset! :anchor.y 0.0)))
 
 (defn make-label! [text style]
   (doto (js/PIXI.Text. text style)
-    (oset! :anchor.x 0.5)
-    (oset! :anchor.y 0.5)))
+    (oset! :anchor.x 0.0)
+    (oset! :anchor.y 0.0)))
 
 (defn add-child! [parent child]
   (ocall! parent :addChild child))
