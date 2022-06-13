@@ -5,11 +5,12 @@
             [petitparser.core :as pp]
             [utils.pixi :as pixi]))
 
-(defmulti run (fn [robot instr] (:type instr)))
-
 (defn make-robot [direction]
   {:direction direction
    :positions [[0 0]]})
+
+
+(defmulti run (fn [_robot instr] (:type instr)))
 
 (defmethod run ::girar [robot {:keys [direction]}]
   (let [directions {::N {::derecha ::E
@@ -38,11 +39,15 @@
              (reduce run robot stmts))
       robot)))
 
+(defmethod run :default [robot _] (js/console.error "ACAACA") robot)
+
 (defn run-program [robot program]
   (reduce run robot program))
 
+
+
 (defn accepts-children? [node]
-  (= ::repetir (:type node)))
+  (contains? #{::repetir ::conditional} (:type node)))
 
 (defn group-by-indent [[current & rest]]
   (when current
@@ -62,7 +67,7 @@
 (def grammar {:start (pp/end :lines)
               :lines (pp/separated-by :line (pp/or "\r\n" "\n"))
               :line (pp/seq (pp/star (pp/or "\t" " "))
-                            (pp/optional (pp/or :avanzar :girar :repetir)))
+                            (pp/optional (pp/or :avanzar :girar :repetir :if)))
               :number (pp/flatten (pp/plus pp/digit))
               :ws (pp/plus (pp/or " " "\t"))
               :ws? (pp/optional :ws)
@@ -86,22 +91,70 @@
                                :ws?
                                (pp/optional (pp/or "veces" "vez"))
                                :ws?
-                               (pp/optional ":"))})
+                               (pp/optional ":"))
+              :condition (pp/or :wall-forward?
+                                :wall-left?
+                                :wall-right?
+                                :destination-reached?)
+              :destination-reached? (pp/seq (pp/or "llegué" "llegó" "llegue" "llego")
+                                            :ws?
+                                            (pp/optional (pp/or "al" "a"))
+                                            :ws?
+                                            (pp/optional "destino")
+                                            :ws?
+                                            (pp/optional "?"))
+              :wall-forward? (pp/seq (pp/optional (pp/or "hay"))
+                                     :ws?
+                                     "pared"
+                                     :ws?
+                                     "adelante"
+                                     :ws?
+                                     (pp/optional "?"))
+              :wall-left? (pp/seq (pp/optional (pp/or "hay"))
+                                  :ws?
+                                  "pared"
+                                  :ws?
+                                  (pp/optional "a")
+                                  :ws?
+                                  (pp/optional "la")
+                                  :ws?
+                                  "izquierda"
+                                  :ws?
+                                  (pp/optional "?"))              
+              :wall-right? (pp/seq (pp/optional (pp/or "hay"))
+                                  :ws?
+                                  "pared"
+                                  :ws?
+                                  (pp/optional "a")
+                                  :ws?
+                                  (pp/optional "la")
+                                  :ws?
+                                  "derecha"
+                                  :ws?
+                                  (pp/optional "?"))
+              :if (pp/seq (pp/or "si" "if")
+                          :ws?
+                          :condition
+                          :ws?
+                          (pp/optional ":"))})
 
-(def transformations 
+(def transformations
   {:number (fn [d] (js/parseInt d))
    :lines (fn [lines] (group-by-indent (remove nil? (take-nth 2 lines))))
-   :line (fn [[indent action]] (when action
-                                 (assoc action
-                                        :indent-level (count indent))))
-   :avanzar (fn [[_ _ steps]] {:type ::avanzar
-                               :steps (or steps 1)})
+   :line (fn [[indent action]]
+           (when action
+             (assoc action
+                    :indent-level (count indent))))
+   :avanzar (fn [[_ _ steps]] {:type ::avanzar :steps (or steps 1)})
    :derecha (constantly ::derecha)
    :izquierda (constantly ::izquierda)
-   :girar (fn [parts] {:type ::girar
-                       :direction (last parts)})
-   :repetir (fn [[_ _ times]] {:type ::repetir
-                               :times times})}
+   :girar (fn [parts] {:type ::girar :direction (last parts)})
+   :repetir (fn [[_ _ times]] {:type ::repetir :times times})
+   :destination-reached? (constantly ::destination-reached?)
+   :wall-forward? (constantly ::wall-forward?)
+   :wall-left? (constantly ::wall-left?)
+   :wall-right? (constantly ::wall-right?)
+   :if (fn [[_ _ condition]] {:type ::conditional :condition condition})}
   )
 
 (def parser (pp/compose grammar transformations))
@@ -124,13 +177,6 @@
 
 
 (defonce pixi (atom nil))
-
-(defn resize-canvas []
-  (when-let [{:keys [html app]} @pixi]
-    (doto html
-      (oset! :style.height "calc(100% - 20px)")
-      (oset! :style.width "calc(50%)"))
-    (ocall! app :resize)))
 
 (def cell-width 72)
 (def cell-height 78)
@@ -190,19 +236,8 @@
       (js/console.error ex)
       (oset! (js/document.getElementById "ast") :innerText ex))))
 
-(oget (js/document.getElementById "exercises") :value)
-
 (defn initialize-ui! []
-  (go
-    (doto (js/document.getElementById "input")
-      (.addEventListener "keyup" update-ui!
-                         #_(fn [e]
-                           (let [value (oget e :target.value)
-                                 out (js/document.getElementById "ast")
-                                 robot (make-robot ::N)]
-                             (try
-                               (oset! out :innerText (js/JSON.stringify (clj->js (run-program robot (parse value))) nil 2))
-                               (catch js/Error ex (oset! out :innerText ex)))))))
+  (go    
     (let [html (js/document.getElementById "pixi-canvas")
           app (pixi/make-application! html)
           texture-map (<! (load-textures!))
@@ -215,48 +250,11 @@
       (doto container
         (pixi/set-position! [0 0])
         (pixi/add-to! (oget app :stage)))
+      (.addEventListener (js/document.getElementById "input")
+                         "keyup" update-ui!)
       (.addEventListener (js/document.getElementById "exercises")
                          "change" update-ui!))))
 
 (defn init [& args]
   (print "RICHO!")
   (initialize-ui!))
-
-(defn ^:dev/before-load-async reload-begin* [done]
-  (go (<! (initialize-ui!))
-      (done)))
-
-(defn ^:dev/after-load-async reload-end* [done]
-  (try
-    (let [[old _] (reset-vals! pixi nil)]
-      (when-let [app (:app old)]
-        (ocall! app :destroy true true)))
-    (catch :default err
-      (print "ERROR" err)))
-  (done))
-
-
-(comment
-  (do
-    (def app (:app @pixi))
-    (def html (:html @pixi)))
-  
-  (js/console.log html)
-  (doto html
-    (oset! :style.height "300px !important"))
-(ocall! app :resize)
-  
-  (oget html :style.height)
-  html
-
-  (go (load-textures!))
-
-  (-> @pixi :app pixi/get-screen-center)
-
-  (.addEventListener (js/document.getElementById "exercises")
-                     "change"
-                     (fn [e] (js/console.log e)
-                       (print (oget e :target.value))))
-
-
-  )
