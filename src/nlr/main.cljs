@@ -44,6 +44,16 @@
     (not (connected? maze from to))))
 
 
+(defn evaluate [robot condition]
+  (let [position (peek (:positions robot))
+        direction (:direction robot)
+        maze (:maze robot)]
+    (case condition
+      ::wall-forward? (wall-forward? maze position direction)
+      ::wall-left? (wall-left? maze position direction)
+      ::wall-right? (wall-right? maze position direction)
+      ::destination-reached? (= position (:end maze)))))
+
 (defmulti run (fn [_robot instr] (:type instr)))
 
 (defn print-robot [robot]
@@ -85,17 +95,16 @@
              (reduce run robot stmts))
       robot)))
 
+(defmethod run ::conditional [robot {:keys [condition stmts]}]
+  (if (evaluate robot condition)
+    (reduce run robot stmts)
+    robot))
+
 (defmethod run :default [robot _] (js/console.error "ACAACA") robot)
 
 (defn run-program [robot program]
   (reduce run robot program))
 
-(comment
-  (def robot (make-robot maze))
-  (def direction (:direction robot))
-  (def steps (:steps (first program)))
-  (run robot (first program)) 
-  )
 
 (defn accepts-children? [node]
   (contains? #{::repetir ::conditional} (:type node)))
