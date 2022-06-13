@@ -5,47 +5,58 @@
             [petitparser.core :as pp]
             [utils.pixi :as pixi]))
 
+(defmulti run (fn [robot instr] (:type instr)))
+
+(defn make-robot [direction]
+  {:direction direction
+   :positions [[0 0]]})
+
+(defmethod run ::girar [robot {:keys [direction]}]
+  (let [directions {::N {::derecha ::E
+                         ::izquierda ::W}
+                    ::E {::derecha ::S
+                         ::izquierda ::N}
+                    ::S {::derecha ::W
+                         ::izquierda ::E}
+                    ::W {::derecha ::N
+                         ::izquierda ::S}}]
+    (update robot :direction #(get-in directions [% direction]))))
+
+(defmethod run ::avanzar [{:keys [direction] :as robot} {:keys [steps]}]
+  (let [directions {::N [1 -] ::S [1 +]
+                    ::E [0 +] ::W [0 -]}
+        [index f] (directions direction)]
+    (update robot :positions (fn [positions]
+                               (let [pos (peek positions)]                                 
+                                 (conj positions (update pos index f steps)))))))
+
+(defmethod run ::repetir [robot {:keys [times stmts]}]
+  (loop [i times
+         robot robot]
+    (if (> i 0)
+      (recur (dec i)
+             (reduce run robot stmts))
+      robot)))
+
+(defn run-program [robot program]
+  (reduce run robot program))
 
 (defn accepts-children? [node]
   (= ::repetir (:type node)))
 
 (defn group-by-indent [[current & rest]]
-  (let [[children siblings] (if (accepts-children? current)
-                              (split-with (fn [next] (> (:indent-level next)
-                                                        (:indent-level current)))
-                                          rest)
-                              [[] rest])
-        current (if (seq children)
-                  (assoc current :stmts (group-by-indent (vec children)))
-                  current)]
-    (vec (concat [current] (when (seq siblings)
-                             (group-by-indent siblings))))))
+  (when current
+    (let [[children siblings] (if (accepts-children? current)
+                                (split-with (fn [next] (> (:indent-level next)
+                                                          (:indent-level current)))
+                                            rest)
+                                [[] rest])
+          current (if (seq children)
+                    (assoc current :stmts (group-by-indent (vec children)))
+                    current)]
+      (vec (concat [current] (when (seq siblings)
+                               (group-by-indent siblings)))))))
 
-
-
-(comment
-(concat [1] nil)
-
-  (def a (clj->js (list 1 2 3)))
-
-  (.shift a)
-  
-  (assert false)
-
-  (def stream (a/into-chan [1 2 3]))
-
-  (def lines [{:type ::avanzar :indent-level 0}
-              {:type ::girar :indent-level 0}
-              {:type ::repetir :indent-level 0}
-              {:type ::avanzar :indent-level 1}
-              {:type ::avanzar :indent-level 1}
-              {:type ::avanzar :indent-level 0}])
-  
-  
-
-
-  (group-by-indent lines)
-  )
 
 (do
 (def grammar {:start (pp/end :lines)
@@ -124,15 +135,16 @@
 (def cell-width 72)
 (def cell-height 78)
 
-(def offsets {"1_1" [-72 -111]
-              "1_2" [-72 -111]
-              "2_1" [-72 77]
-              "2_2" [-72 77]
-              "3_1" [0 -38]
-              "3_2" [0 115]
-              "4_1" [108 115]
-              "4_2" [108 115]
-              "5_2" [-36 -231]})
+(def exercises
+  {"1_1" {:offset [-72 -111] :initial-direction ::N}
+   "1_2" {:offset [-72 -111] :initial-direction ::W}
+   "2_1" {:offset [-72 77] :initial-direction ::W}
+   "2_2" {:offset [-72 77] :initial-direction ::S}
+   "3_1" {:offset [0 -38] :initial-direction ::N}
+   "3_2" {:offset [0 115] :initial-direction ::N}
+   "4_1" {:offset [108 115] :initial-direction ::W}
+   "4_2" {:offset [108 115] :initial-direction ::W}
+   "5_2" {:offset [-36 -231] :initial-direction ::S}})
 
 (defn load-textures! []
   (go (let [names ["1_1" "1_2" "2_1" "2_2" "3_1" "3_2" "4_1" "4_2" "5_2"]
@@ -142,62 +154,69 @@
                               (a/map vector)))]
         (zipmap names textures))))
 
+(defn update-ui! []
+  (try
+    (let [selected-exercise (oget (js/document.getElementById "exercises") :value)]
+      (print selected-exercise)
+      (when-let [{:keys [offset initial-direction]} (exercises selected-exercise)]
+        (let [{:keys [textures container html app line]} @pixi
+              texture (textures selected-exercise)
+              sprite (pixi/make-sprite! texture)]
+          (ocall! container :removeChildren)
+          (pixi/add-to! sprite container)
+          (print (oget sprite :height))
+          (doto html
+            (oset! :style.height (str (oget sprite :height) "px"))
+            (oset! :style.width (str (oget sprite :width) "px")))
+          (ocall! app :resize)
+          (let [[x0 y0] (map + (pixi/get-center sprite) offset)
+                program (parse (oget (js/document.getElementById "input") :value))
+                robot (run-program (make-robot initial-direction) program)]
+            (oset! (js/document.getElementById "ast") 
+                   :innerText (js/JSON.stringify (clj->js program) nil 2))
+            (doto line
+              (ocall! :clear)
+              (ocall! :lineStyle (clj->js {:width 3
+                                           :color 0x5555ff
+                                           :alpha 1}))
+              (ocall! :moveTo x0 y0))
+            (doseq [[x1 y1] (:positions robot)]
+              (ocall! line :lineTo
+                      (+ x0 (* cell-width x1))
+                      (+ y0 (* cell-height y1))))
+            (doto line
+              (pixi/add-to! container))))))
+    (catch js/Error ex 
+      (js/console.error ex)
+      (oset! (js/document.getElementById "ast") :innerText ex))))
+
+(oget (js/document.getElementById "exercises") :value)
+
 (defn initialize-ui! []
   (go
     (doto (js/document.getElementById "input")
-      (.addEventListener "keyup"
-                         (fn [e]
+      (.addEventListener "keyup" update-ui!
+                         #_(fn [e]
                            (let [value (oget e :target.value)
-                                 out (js/document.getElementById "ast")]
+                                 out (js/document.getElementById "ast")
+                                 robot (make-robot ::N)]
                              (try
-                               (oset! out :innerText (js/JSON.stringify (clj->js (parse value)) nil 2))
+                               (oset! out :innerText (js/JSON.stringify (clj->js (run-program robot (parse value))) nil 2))
                                (catch js/Error ex (oset! out :innerText ex)))))))
     (let [html (js/document.getElementById "pixi-canvas")
-          app (pixi/make-application! html)]
-      (reset! pixi {:html html, :app app})
-        ;(.addEventListener js/window "resize" resize-canvas)
-        ;(resize-canvas)
-      (let [texture-map (<! (load-textures!))
-            container (js/PIXI.Container.)
-            line (js/PIXI.Graphics.)]
-        (doto container
-          (pixi/set-position! [0 0])
-          (pixi/add-to! (oget app :stage)))
-        (.addEventListener (js/document.getElementById "exercises")
-                           "change"
-                           (fn [e]
-                             (let [selection (oget e :target.value)
-                                   texture (texture-map selection)
-                                   sprite (pixi/make-sprite! texture)]
-                               (ocall! container :removeChildren)
-                               (pixi/add-to! sprite container)
-                               (print (oget sprite :height))
-                               (doto html
-                                 (oset! :style.height (str (oget sprite :height) "px"))
-                                 (oset! :style.width (str (oget sprite :width) "px")))
-                               (ocall! app :resize)
-                               (let [[x0 y0] (map +
-                                                  (pixi/get-center sprite)
-                                                  (offsets selection))]
-                                 (doto line
-                                   (ocall! :clear)
-                                   (ocall! :lineStyle (clj->js {:width 3
-                                                                :color 0x5555ff
-                                                                :alpha 1}))
-                                   (ocall! :moveTo x0 y0))
-                                 (doseq [[x1 y1] [[1 0]
-                                                  [1 1]
-                                                  [0 1]
-                                                  [0 2]
-                                                  [1 2]
-                                                  [2 2]
-                                                  [2 1]
-                                                  [2 0]]]
-                                   (ocall! line :lineTo
-                                           (+ x0 (* cell-width x1))
-                                           (+ y0 (* cell-height y1))))
-                                 (doto line
-                                   (pixi/add-to! container))))))))))
+          app (pixi/make-application! html)
+          texture-map (<! (load-textures!))
+          container (js/PIXI.Container.)
+          line (js/PIXI.Graphics.)]
+      (reset! pixi {:html html, :app app
+                    :textures texture-map
+                    :container container
+                    :line line})
+      (doto container
+        (pixi/set-position! [0 0])
+        (pixi/add-to! (oget app :stage)))
+      (.addEventListener (js/document.getElementById "exercises")
+                         "change" update-ui!))))
 
 (defn init [& args]
   (print "RICHO!")
