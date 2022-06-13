@@ -181,6 +181,38 @@
 (def cell-width 72)
 (def cell-height 78)
 
+(def mazes
+  {"1_1" {:cells {[0 0] [[0 1]]
+                  [0 1] [[0 0] [0 2]]
+                  [0 2] [[0 1] [0 3]]
+                  [0 3] [[0 2] [1 3]]
+                  [1 0] [[1 1] [2 0]]
+                  [1 1] [[1 2] [1 0]]
+                  [1 2] [[1 3] [1 1]]
+                  [1 3] [[0 3] [1 2]]
+                  [2 0] [[2 1] [1 0]]
+                  [2 1] [[2 0] [2 2]]
+                  [2 2] [[2 1] [2 3]]
+                  [2 3] [[2 2]]}}
+   "1_2" {:cells {[0 0] [[1 0]]
+                  [1 0] [[0 0] [1 1]]
+                  [1 1] [[1 0] [1 2]]
+                  [1 2] [[1 1] [1 3]]
+                  [1 3] [[1 2] [2 3]]
+                  [2 3] [[1 3]]}}
+   })
+
+(comment
+
+  (doseq [[maze-name {:keys [cells]}] mazes]
+    (doseq [[cell-from neighbours] cells]
+      (doseq [cell-to neighbours]
+        (print cell-from (cells cell-to))
+        (assert (>= (.indexOf (cells cell-to) cell-from) 0)
+                (str maze-name ". " cell-to " -> " cell-from ": " (.indexOf (cells cell-to) cell-from))))))
+  
+  )
+
 (def exercises
   {"1_1" {:offset [-72 -111] :initial-direction ::N}
    "1_2" {:offset [-72 -111] :initial-direction ::W}
@@ -200,6 +232,24 @@
                               (a/map vector)))]
         (zipmap names textures))))
 
+(defn draw-connections [maze initial-pos container]
+  (let [transform (fn [[x y]]
+                    (let [[x0 y0] initial-pos]
+                      [(+ x0 (* x cell-width))
+                       (+ y0 (* y cell-height))]))]
+    (doseq [[cell-from neighbours] (:cells maze)]
+      (doseq [cell-to neighbours]
+        (let [[x0 y0] (transform cell-from)
+              [x1 y1] (transform cell-to)]
+          (doto (js/PIXI.Graphics.)
+            (ocall! :clear)
+            (ocall! :lineStyle (clj->js {:width 15
+                                         :color 0xff0000
+                                         :alpha 0.5}))
+            (ocall! :moveTo x0 y0)
+            (ocall! :lineTo x1 y1)
+            (pixi/add-to! container)))))))
+
 (defn update-ui! []
   (try
     (let [selected-exercise (oget (js/document.getElementById "exercises") :value)]
@@ -218,6 +268,9 @@
           (let [[x0 y0] (map + (pixi/get-center sprite) offset)
                 program (parse (oget (js/document.getElementById "input") :value))
                 robot (run-program (make-robot initial-direction) program)]
+            (draw-connections (mazes selected-exercise)
+                              [x0 y0]
+                              container)
             (oset! (js/document.getElementById "ast") 
                    :innerText (js/JSON.stringify (clj->js program) nil 2))
             (doto line
