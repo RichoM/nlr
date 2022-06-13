@@ -6,10 +6,15 @@
             [utils.pixi :as pixi]))
 
 
+(defn accepts-children? [node]
+  (= ::repetir (:type node)))
+
 (defn group-by-indent [[current & rest]]
-  (let [[children siblings] (split-with (fn [next] (> (:indent-level next)
-                                                      (:indent-level current)))
-                                        rest)
+  (let [[children siblings] (if (accepts-children? current)
+                              (split-with (fn [next] (> (:indent-level next)
+                                                        (:indent-level current)))
+                                          rest)
+                              [[] rest])
         current (if (seq children)
                   (assoc current :stmts (group-by-indent (vec children)))
                   current)]
