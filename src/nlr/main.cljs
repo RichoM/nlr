@@ -1,7 +1,74 @@
 (ns nlr.main
   (:require [clojure.core.async :as a :refer [go <!]]
+            [clojure.string :as str]
             [oops.core :refer [oget oset! ocall!]]
+            [petitparser.core :as pp]
             [utils.pixi :as pixi]))
+
+(do
+(def grammar {:start (pp/end :lines)
+              :lines (pp/separated-by :line (pp/or "\r\n" "\n"))
+              :line (pp/seq (pp/star (pp/or "\t" " "))
+                            (pp/optional (pp/or :avanzar :girar :repetir)))
+              :number (pp/flatten (pp/plus pp/digit))
+              :ws (pp/plus (pp/or " " "\t"))
+              :ws? (pp/optional :ws)
+              :avanzar (pp/seq (pp/or "avanzar" "avanza" "avanzá")
+                               :ws?
+                               (pp/optional :number)
+                               :ws?
+                               (pp/optional (pp/or "casilleros" "casillero" "celdas" "celda")))
+              :derecha (pp/or "derecha" "der" "d" "right" "r")
+              :izquierda (pp/or "izquierda" "izq" "i" "left" "l")
+              :girar (pp/seq (pp/or "girar" "gira" "girá")
+                             :ws?
+                             (pp/optional "a")
+                             :ws?
+                             (pp/optional "la")
+                             :ws?
+                             (pp/or :derecha :izquierda))
+              :repetir (pp/seq (pp/or "repetir" "repeat" "rep")
+                               :ws?
+                               (pp/optional :number)
+                               :ws?
+                               (pp/optional (pp/or "veces" "vez"))
+                               :ws?
+                               (pp/optional ":"))})
+
+(def transformations 
+  {:number (fn [d] (js/parseInt d))
+   :lines (fn [lines] (vec (remove nil? (take-nth 2 lines))))
+   :line (fn [[indent action]] (when action
+                                 (assoc action
+                                        :indent-level (count indent))))
+   :avanzar (fn [[_ _ steps]] {:type ::avanzar
+                               :steps (or steps 1)})
+   :derecha (constantly ::derecha)
+   :izquierda (constantly ::izquierda)
+   :girar (fn [parts] {:type ::girar
+                       :direction (last parts)})
+   :repetir (fn [[_ _ times]] {:type ::repetir
+                               :times times})}
+  )
+
+(def parser (pp/compose grammar transformations))
+
+(defn parse [str]
+  (pp/parse parser (str/lower-case str)))
+)
+
+(comment
+  
+  (parse (oget (js/document.getElementById "input") :value))
+
+  (parse 
+  "girar izq
+  avanzar")
+  (parse "Girar izq")
+  (parse "Repetir 10 veces")
+
+  )
+
 
 (defonce pixi (atom nil))
 
