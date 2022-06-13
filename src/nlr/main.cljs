@@ -5,12 +5,56 @@
             [petitparser.core :as pp]
             [utils.pixi :as pixi]))
 
-(defn make-robot [direction]
-  {:direction direction
-   :positions [[0 0]]})
+(defn make-robot [{:keys [initial-direction begin] :as maze}]
+  {:direction initial-direction
+   :positions [begin]
+   :maze maze})
+
+
+(defn direction-between [[x0 y0] [x1 y1]]
+  (cond
+    (and (> x1 x0) (= y0 y1)) ::E
+    (and (< x1 x0) (= y0 y1)) ::W
+    (and (> y1 y0) (= x0 x1)) ::S
+    (and (< y1 y0) (= x0 x1)) ::N))
+
+(defn connected? [maze from to]
+  (when-let [neighbours (get-in maze [:cells from])]
+    (>= (.indexOf neighbours to) 0)))
+
+(defn wall-forward? [maze from direction]
+  (let [directions {::N [1 -] ::S [1 +]
+                    ::E [0 +] ::W [0 -]}
+        [index f] (directions direction)
+        to (update from index f 1)]
+    (not (connected? maze from to))))
+
+(defn wall-left? [maze from direction]
+  (let [directions {::N [0 -] ::S [0 +]
+                    ::E [1 -] ::W [1 +]}
+        [index f] (directions direction)
+        to (update from index f 1)]
+    (not (connected? maze from to))))
+
+(defn wall-right? [maze from direction]
+  (let [directions {::N [0 +] ::S [0 -]
+                    ::E [1 +] ::W [1 -]}
+        [index f] (directions direction)
+        to (update from index f 1)]
+    (not (connected? maze from to))))
 
 
 (defmulti run (fn [_robot instr] (:type instr)))
+
+(defn print-robot [robot]
+  (let [position (peek (:positions robot))
+        direction (:direction robot)
+        maze (:maze robot)]
+    (print {:position position
+            :direction direction
+            :left? (wall-left? maze position direction)
+            :right? (wall-right? maze position direction)
+            :forward? (wall-forward? maze position direction)})))
 
 (defmethod run ::girar [robot {:keys [direction]}]
   (let [directions {::N {::derecha ::E
@@ -21,12 +65,14 @@
                          ::izquierda ::E}
                     ::W {::derecha ::N
                          ::izquierda ::S}}]
+    (print-robot robot)
     (update robot :direction #(get-in directions [% direction]))))
 
 (defmethod run ::avanzar [{:keys [direction] :as robot} {:keys [steps]}]
   (let [directions {::N [1 -] ::S [1 +]
                     ::E [0 +] ::W [0 -]}
         [index f] (directions direction)]
+    (print-robot robot)
     (update robot :positions (fn [positions]
                                (let [pos (peek positions)]                                 
                                  (conj positions (update pos index f steps)))))))
@@ -44,7 +90,12 @@
 (defn run-program [robot program]
   (reduce run robot program))
 
-
+(comment
+  (def robot (make-robot maze))
+  (def direction (:direction robot))
+  (def steps (:steps (first program)))
+  (run robot (first program)) 
+  )
 
 (defn accepts-children? [node]
   (contains? #{::repetir ::conditional} (:type node)))
@@ -432,7 +483,7 @@
   (try
     (let [selected-exercise (oget (js/document.getElementById "exercises") :value)]
       (print selected-exercise)
-      (when-let [{:keys [offset initial-direction]} (mazes selected-exercise)]
+      (when-let [maze (mazes selected-exercise)]
         (let [{:keys [textures container html app line]} @pixi
               texture (textures selected-exercise)
               sprite (pixi/make-sprite! texture)]
@@ -443,11 +494,12 @@
             (oset! :style.height (str (oget sprite :height) "px"))
             (oset! :style.width (str (oget sprite :width) "px")))
           (ocall! app :resize)
-          (let [[x0 y0] (map + (pixi/get-center sprite) offset)
+          (let [[xo yo] (map + (pixi/get-center sprite) (:offset maze))
+                [x0 y0] (:begin maze)
                 program (parse (oget (js/document.getElementById "input") :value))
-                robot (run-program (make-robot initial-direction) program)]
+                robot (run-program (make-robot maze) program)]
             (draw-connections (mazes selected-exercise)
-                              [x0 y0]
+                              [xo yo]
                               container)
             (oset! (js/document.getElementById "ast") 
                    :innerText (js/JSON.stringify (clj->js program) nil 2))
@@ -456,11 +508,14 @@
               (ocall! :lineStyle (clj->js {:width 3
                                            :color 0x5555ff
                                            :alpha 1}))
-              (ocall! :moveTo x0 y0))
+              (ocall! :moveTo xo yo))
+            (doseq [[from to] (partition 2 1 (:positions robot))]
+              (when-not (connected? maze from to)
+                (print "WALKING THROUGH WALLS!" [from to])))
             (doseq [[x1 y1] (:positions robot)]
               (ocall! line :lineTo
-                      (+ x0 (* cell-width x1))
-                      (+ y0 (* cell-height y1))))
+                      (+ xo (* cell-width (- x1 x0)))
+                      (+ yo (* cell-height (- y1 y0)))))
             (doto line
               (pixi/add-to! container))))))
     (catch js/Error ex 
