@@ -148,7 +148,7 @@
       (.addEventListener "keyup"
                          (fn [e]
                            (let [value (oget e :target.value)
-                                 out (js/document.getElementById "variables")]
+                                 out (js/document.getElementById "ast")]
                              (try
                                (oset! out :innerText (js/JSON.stringify (clj->js (parse value)) nil 2))
                                (catch js/Error ex (oset! out :innerText ex)))))))
