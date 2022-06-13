@@ -5,6 +5,43 @@
             [petitparser.core :as pp]
             [utils.pixi :as pixi]))
 
+
+(defn group-by-indent [[current & rest]]
+  (let [[children siblings] (split-with (fn [next] (> (:indent-level next)
+                                                      (:indent-level current)))
+                                        rest)
+        current (if (seq children)
+                  (assoc current :stmts (group-by-indent (vec children)))
+                  current)]
+    (vec (concat [current] (when (seq siblings)
+                             (group-by-indent siblings))))))
+
+
+
+(comment
+(concat [1] nil)
+
+  (def a (clj->js (list 1 2 3)))
+
+  (.shift a)
+  
+  (assert false)
+
+  (def stream (a/into-chan [1 2 3]))
+
+  (def lines [{:type ::avanzar :indent-level 0}
+              {:type ::girar :indent-level 0}
+              {:type ::repetir :indent-level 0}
+              {:type ::avanzar :indent-level 1}
+              {:type ::avanzar :indent-level 1}
+              {:type ::avanzar :indent-level 0}])
+  
+  
+
+
+  (group-by-indent lines)
+  )
+
 (do
 (def grammar {:start (pp/end :lines)
               :lines (pp/separated-by :line (pp/or "\r\n" "\n"))
@@ -37,7 +74,7 @@
 
 (def transformations 
   {:number (fn [d] (js/parseInt d))
-   :lines (fn [lines] (vec (remove nil? (take-nth 2 lines))))
+   :lines (fn [lines] (group-by-indent (remove nil? (take-nth 2 lines))))
    :line (fn [[indent action]] (when action
                                  (assoc action
                                         :indent-level (count indent))))
@@ -101,52 +138,61 @@
         (zipmap names textures))))
 
 (defn initialize-ui! []
-  (go (let [html (js/document.getElementById "pixi-canvas")
-            app (pixi/make-application! html)]
-        (reset! pixi {:html html, :app app})
+  (go
+    (doto (js/document.getElementById "input")
+      (.addEventListener "keyup"
+                         (fn [e]
+                           (let [value (oget e :target.value)
+                                 out (js/document.getElementById "variables")]
+                             (try
+                               (oset! out :innerText (js/JSON.stringify (clj->js (parse value)) nil 2))
+                               (catch js/Error ex (oset! out :innerText ex)))))))
+    (let [html (js/document.getElementById "pixi-canvas")
+          app (pixi/make-application! html)]
+      (reset! pixi {:html html, :app app})
         ;(.addEventListener js/window "resize" resize-canvas)
         ;(resize-canvas)
-        (let [texture-map (<! (load-textures!))
-              container (js/PIXI.Container.)
-              line (js/PIXI.Graphics.)]
-          (doto container
-            (pixi/set-position! [0 0])
-            (pixi/add-to! (oget app :stage)))
-          (.addEventListener (js/document.getElementById "exercises")
-                             "change"
-                             (fn [e]
-                               (let [selection (oget e :target.value)
-                                     texture (texture-map selection)
-                                     sprite (pixi/make-sprite! texture)]
-                                 (ocall! container :removeChildren)
-                                 (pixi/add-to! sprite container)
-                                 (print (oget sprite :height))
-                                 (doto html
-                                   (oset! :style.height (str (oget sprite :height) "px"))
-                                   (oset! :style.width (str (oget sprite :width) "px")))
-                                 (ocall! app :resize)
-                                 (let [[x0 y0] (map +
-                                                    (pixi/get-center sprite)
-                                                    (offsets selection))]
-                                   (doto line
-                                     (ocall! :clear)
-                                     (ocall! :lineStyle (clj->js {:width 3
-                                                                  :color 0x5555ff
-                                                                  :alpha 1}))
-                                     (ocall! :moveTo x0 y0))
-                                   (doseq [[x1 y1] [[1 0]
-                                                    [1 1]
-                                                    [0 1]
-                                                    [0 2]
-                                                    [1 2]
-                                                    [2 2]
-                                                    [2 1]
-                                                    [2 0]]]
-                                     (ocall! line :lineTo
-                                             (+ x0 (* cell-width x1))
-                                             (+ y0 (* cell-height y1))))
-                                   (doto line
-                                     (pixi/add-to! container))))))))))
+      (let [texture-map (<! (load-textures!))
+            container (js/PIXI.Container.)
+            line (js/PIXI.Graphics.)]
+        (doto container
+          (pixi/set-position! [0 0])
+          (pixi/add-to! (oget app :stage)))
+        (.addEventListener (js/document.getElementById "exercises")
+                           "change"
+                           (fn [e]
+                             (let [selection (oget e :target.value)
+                                   texture (texture-map selection)
+                                   sprite (pixi/make-sprite! texture)]
+                               (ocall! container :removeChildren)
+                               (pixi/add-to! sprite container)
+                               (print (oget sprite :height))
+                               (doto html
+                                 (oset! :style.height (str (oget sprite :height) "px"))
+                                 (oset! :style.width (str (oget sprite :width) "px")))
+                               (ocall! app :resize)
+                               (let [[x0 y0] (map +
+                                                  (pixi/get-center sprite)
+                                                  (offsets selection))]
+                                 (doto line
+                                   (ocall! :clear)
+                                   (ocall! :lineStyle (clj->js {:width 3
+                                                                :color 0x5555ff
+                                                                :alpha 1}))
+                                   (ocall! :moveTo x0 y0))
+                                 (doseq [[x1 y1] [[1 0]
+                                                  [1 1]
+                                                  [0 1]
+                                                  [0 2]
+                                                  [1 2]
+                                                  [2 2]
+                                                  [2 1]
+                                                  [2 0]]]
+                                   (ocall! line :lineTo
+                                           (+ x0 (* cell-width x1))
+                                           (+ y0 (* cell-height y1))))
+                                 (doto line
+                                   (pixi/add-to! container))))))))))
 
 (defn init [& args]
   (print "RICHO!")
