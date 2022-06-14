@@ -52,7 +52,9 @@
       ::wall-forward? (wall-forward? maze position direction)
       ::wall-left? (wall-left? maze position direction)
       ::wall-right? (wall-right? maze position direction)
-      ::destination-reached? (= position (:end maze)))))
+      ::destination-reached? (= position (:end maze))
+      (when (= ::negated (:type condition))
+        (not (evaluate robot (:condition condition)))))))
 
 (defmulti run (fn [_robot instr] (:type instr)))
 
@@ -156,6 +158,7 @@
                                 :wall-left?
                                 :wall-right?
                                 :destination-reached?)
+              :negated-condition (pp/seq "no" :ws? :condition)
               :destination-reached? (pp/seq (pp/or "llegué" "llegó" "llegue" "llego")
                                             :ws?
                                             (pp/optional (pp/or "al" "a"))
@@ -194,7 +197,7 @@
                                   (pp/optional "?"))
               :if (pp/seq (pp/or "si" "if")
                           :ws?
-                          :condition
+                          (pp/or :negated-condition :condition)
                           :ws?
                           (pp/optional ":"))})
 
@@ -214,6 +217,7 @@
    :wall-forward? (constantly ::wall-forward?)
    :wall-left? (constantly ::wall-left?)
    :wall-right? (constantly ::wall-right?)
+   :negated-condition (fn [[_ _ condition]] {:type ::negated :condition condition})
    :if (fn [[_ _ condition]] {:type ::conditional :condition condition})}
   )
 
