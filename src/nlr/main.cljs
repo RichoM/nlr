@@ -5,6 +5,11 @@
             [petitparser.core :as pp]
             [utils.pixi :as pixi]))
 
+(defn print-error [ex]
+  (js/console.error ex)
+  (oset! (js/document.getElementById "errors") 
+         :innerText (ex-message ex)))
+
 (defn make-robot [{:keys [initial-direction begin] :as maze}]
   {:direction initial-direction
    :positions [begin]
@@ -69,7 +74,7 @@
   (try 
     (reduce run robot program)
     (catch js/Error. ex 
-      (js/console.error ex)
+      (print-error ex)
       (when-let [{:keys [robot]} (ex-data ex)]
         robot))))
 
@@ -124,20 +129,6 @@
     robot))
 
 (defmethod run* :default [robot _] (js/console.error "ACAACA") robot)
-
-
-(comment
-  
-  (defn foo [a b]
-    (if (<= a 0)
-      (throw (js/Error. "BYE!"))
-      (dec a)))
-  
-  (try 
-    (reduce foo 0 [1])
-    (catch js/Error ex (js/console.error ex)))
-  
-  )
 
 
 (defn accepts-children? [node]
@@ -534,6 +525,7 @@
   (try
     (let [selected-exercise (oget (js/document.getElementById "exercises") :value)]
       (print selected-exercise)
+      (oset! (js/document.getElementById "errors") :innerText "")
       (when-let [maze (mazes selected-exercise)]
         (let [{:keys [textures container html app line]} @pixi
               texture (textures selected-exercise)
@@ -549,11 +541,12 @@
                 [x0 y0] (:begin maze)
                 program (parse (oget (js/document.getElementById "input") :value))
                 robot (run-program (make-robot maze) program)]
-            (draw-connections (mazes selected-exercise)
+            #_(draw-connections (mazes selected-exercise)
                               [xo yo]
                               container)
             (oset! (js/document.getElementById "ast") 
-                   :innerText (js/JSON.stringify (clj->js program) nil 2))
+                   :innerText (str "INSTRUCTIONS: " @counter 
+                                   "\nPROGRAM: " (js/JSON.stringify (clj->js program) nil 2)))
             (doto line
               (ocall! :clear)
               (ocall! :lineStyle (clj->js {:width 3
@@ -569,9 +562,15 @@
                       (+ yo (* cell-height (- y1 y0)))))
             (doto line
               (pixi/add-to! container))))))
-    (catch js/Error ex 
-      (js/console.error ex)
-      (oset! (js/document.getElementById "ast") :innerText ex))))
+    (catch js/Error ex (print-error ex))))
+
+(defn start-update-loop! [updates-chan]
+  (go
+    (loop []
+      (when (<! updates-chan)
+        (<! (a/timeout 100))
+        (update-ui!)        
+        (recur)))))
 
 (defn initialize-ui! []
   (go    
@@ -587,10 +586,12 @@
       (doto container
         (pixi/set-position! [0 0])
         (pixi/add-to! (oget app :stage)))
-      (.addEventListener (js/document.getElementById "input")
-                         "keyup" update-ui!)
-      (.addEventListener (js/document.getElementById "exercises")
-                         "change" update-ui!))))
+      (let [updates-chan (a/chan (a/dropping-buffer 1))]
+        (.addEventListener (js/document.getElementById "input")
+                           "keyup" #(a/put! updates-chan true))
+        (.addEventListener (js/document.getElementById "exercises")
+                           "change" #(a/put! updates-chan true))
+        (start-update-loop! updates-chan)))))
 
 (defn init [& args]
   (print "RICHO!")
