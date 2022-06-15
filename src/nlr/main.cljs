@@ -135,6 +135,14 @@
     (run (reduce run robot stmts) instr)
     robot))
 
+(defmethod run* ::procedure [robot {:keys [name] :as proc}]
+  (assoc-in robot [:procedures name] proc))
+
+(defmethod run* ::call [robot {:keys [name]}]
+  (if-let [{:keys [stmts]} (get-in robot [:procedures name])]
+    (reduce run robot stmts)
+    (throw (js/Error. (str "UNKNOWN PROCEDURE: " name)))))
+
 (defmethod run* :default [robot _] (js/console.error "ACAACA") robot)
 
 
@@ -159,7 +167,8 @@
 (def grammar {:start (pp/end :lines)
               :lines (pp/separated-by :line (pp/seq :ws? (pp/or "\r\n" "\n")))
               :line (pp/seq (pp/star (pp/or "\t" " "))
-                            (pp/optional (pp/or :avanzar :girar :repetir :if :while)))
+                            (pp/optional (pp/or :avanzar :girar :repetir :if :while
+                                                :procedure :call)))
               :number (pp/flatten (pp/plus pp/digit))
               :ws (pp/plus (pp/or " " "\t"))
               :ws? (pp/optional :ws)
@@ -234,7 +243,13 @@
                              :ws?
                              (pp/or :negated-condition :condition)
                              :ws?
-                             (pp/optional ":"))})
+                             (pp/optional ":"))              
+              :procedure (pp/seq "para"
+                             :ws?
+                             (pp/flatten (pp/plus pp/word))
+                             :ws?
+                             (pp/optional ":"))
+              :call (pp/flatten (pp/plus pp/word))})
 
 (def transformations
   {:number (fn [d] (js/parseInt d))
@@ -254,7 +269,9 @@
    :wall-right? (constantly ::wall-right?)
    :negated-condition (fn [[_ _ condition]] {:type ::negated :condition condition})
    :if (fn [[_ _ condition]] {:type ::if :condition condition})
-   :while (fn [[_ _ condition]] {:type ::while :condition condition})}
+   :while (fn [[_ _ condition]] {:type ::while :condition condition})
+   :procedure (fn [[_ _ name]] {:type ::procedure :name (str/lower-case name)})
+   :call (fn [name] {:type ::call :name (str/lower-case name)})}
   )
 
 (def parser (pp/compose grammar transformations))
