@@ -10,6 +10,7 @@
    :positions [begin]
    :maze maze})
 
+(defonce counter (atom 0))
 
 (defn direction-between [[x0 y0] [x1 y1]]
   (cond
@@ -56,7 +57,22 @@
       (when (= ::negated (:type condition))
         (not (evaluate robot (:condition condition)))))))
 
-(defmulti run (fn [_robot instr] (:type instr)))
+(defmulti run* (fn [_robot instr] (:type instr)))
+
+(defn run [robot instr]
+  (if (> (swap! counter inc) 1000)
+    (throw (ex-info "LIMIT REACHED!" {:robot robot}))
+    (run* robot instr)))
+
+(defn run-program [robot program]
+  (reset! counter 0)
+  (try 
+    (reduce run robot program)
+    (catch js/Error. ex 
+      (js/console.error ex)
+      (when-let [{:keys [robot]} (ex-data ex)]
+        robot))))
+
 
 (defn print-robot [robot]
   (let [position (peek (:positions robot))
@@ -68,7 +84,7 @@
             :right? (wall-right? maze position direction)
             :forward? (wall-forward? maze position direction)})))
 
-(defmethod run ::girar [robot {:keys [direction]}]
+(defmethod run* ::girar [robot {:keys [direction]}]
   (let [directions {::N {::derecha ::E
                          ::izquierda ::W}
                     ::E {::derecha ::S
@@ -80,7 +96,7 @@
     (print-robot robot)
     (update robot :direction #(get-in directions [% direction]))))
 
-(defmethod run ::avanzar [{:keys [direction] :as robot} {:keys [steps]}]
+(defmethod run* ::avanzar [{:keys [direction] :as robot} {:keys [steps]}]
   (let [directions {::N [1 -] ::S [1 +]
                     ::E [0 +] ::W [0 -]}
         [index f] (directions direction)]
@@ -89,7 +105,7 @@
                                (let [pos (peek positions)]                                 
                                  (conj positions (update pos index f steps)))))))
 
-(defmethod run ::repetir [robot {:keys [times stmts]}]
+(defmethod run* ::repetir [robot {:keys [times stmts]}]
   (loop [i times
          robot robot]
     (if (> i 0)
@@ -97,19 +113,35 @@
              (reduce run robot stmts))
       robot)))
 
-(defmethod run ::conditional [robot {:keys [condition stmts]}]
+(defmethod run* ::if [robot {:keys [condition stmts]}]
   (if (evaluate robot condition)
     (reduce run robot stmts)
     robot))
 
-(defmethod run :default [robot _] (js/console.error "ACAACA") robot)
+(defmethod run* ::while [robot {:keys [condition stmts] :as instr}]
+  (if (evaluate robot condition)
+    (run (reduce run robot stmts) instr)
+    robot))
 
-(defn run-program [robot program]
-  (reduce run robot program))
+(defmethod run* :default [robot _] (js/console.error "ACAACA") robot)
+
+
+(comment
+  
+  (defn foo [a b]
+    (if (<= a 0)
+      (throw (js/Error. "BYE!"))
+      (dec a)))
+  
+  (try 
+    (reduce foo 0 [1])
+    (catch js/Error ex (js/console.error ex)))
+  
+  )
 
 
 (defn accepts-children? [node]
-  (contains? #{::repetir ::conditional} (:type node)))
+  (not (contains? #{::avanzar ::girar} (:type node))))
 
 (defn group-by-indent [[current & rest]]
   (when current
@@ -127,9 +159,9 @@
 
 (do
 (def grammar {:start (pp/end :lines)
-              :lines (pp/separated-by :line (pp/or "\r\n" "\n"))
+              :lines (pp/separated-by :line (pp/seq :ws? (pp/or "\r\n" "\n")))
               :line (pp/seq (pp/star (pp/or "\t" " "))
-                            (pp/optional (pp/or :avanzar :girar :repetir :if)))
+                            (pp/optional (pp/or :avanzar :girar :repetir :if :while)))
               :number (pp/flatten (pp/plus pp/digit))
               :ws (pp/plus (pp/or " " "\t"))
               :ws? (pp/optional :ws)
@@ -166,14 +198,14 @@
                                             (pp/optional "destino")
                                             :ws?
                                             (pp/optional "?"))
-              :wall-forward? (pp/seq (pp/optional (pp/or "hay"))
+              :wall-forward? (pp/seq (pp/optional (pp/or "haya" "hay"))
                                      :ws?
                                      "pared"
                                      :ws?
                                      "adelante"
                                      :ws?
                                      (pp/optional "?"))
-              :wall-left? (pp/seq (pp/optional (pp/or "hay"))
+              :wall-left? (pp/seq (pp/optional (pp/or "haya" "hay"))
                                   :ws?
                                   "pared"
                                   :ws?
@@ -183,23 +215,28 @@
                                   :ws?
                                   "izquierda"
                                   :ws?
-                                  (pp/optional "?"))              
-              :wall-right? (pp/seq (pp/optional (pp/or "hay"))
-                                  :ws?
-                                  "pared"
-                                  :ws?
-                                  (pp/optional "a")
-                                  :ws?
-                                  (pp/optional "la")
-                                  :ws?
-                                  "derecha"
-                                  :ws?
                                   (pp/optional "?"))
+              :wall-right? (pp/seq (pp/optional (pp/or "haya" "hay"))
+                                   :ws?
+                                   "pared"
+                                   :ws?
+                                   (pp/optional "a")
+                                   :ws?
+                                   (pp/optional "la")
+                                   :ws?
+                                   "derecha"
+                                   :ws?
+                                   (pp/optional "?"))
               :if (pp/seq (pp/or "si" "if")
                           :ws?
                           (pp/or :negated-condition :condition)
                           :ws?
-                          (pp/optional ":"))})
+                          (pp/optional ":"))
+              :while (pp/seq (pp/or "mientras" "while")
+                             :ws?
+                             (pp/or :negated-condition :condition)
+                             :ws?
+                             (pp/optional ":"))})
 
 (def transformations
   {:number (fn [d] (js/parseInt d))
@@ -218,7 +255,8 @@
    :wall-left? (constantly ::wall-left?)
    :wall-right? (constantly ::wall-right?)
    :negated-condition (fn [[_ _ condition]] {:type ::negated :condition condition})
-   :if (fn [[_ _ condition]] {:type ::conditional :condition condition})}
+   :if (fn [[_ _ condition]] {:type ::if :condition condition})
+   :while (fn [[_ _ condition]] {:type ::while :condition condition})}
   )
 
 (def parser (pp/compose grammar transformations))
@@ -504,8 +542,8 @@
           (pixi/add-to! sprite container)
           (print (oget sprite :height))
           (doto html
-            (oset! :style.height (str (oget sprite :height) "px"))
-            (oset! :style.width (str (oget sprite :width) "px")))
+            (oset! :style.width (str (oget sprite :width) "px"))
+            (oset! :style.height (str (oget sprite :height) "px")))
           (ocall! app :resize)
           (let [[xo yo] (map + (pixi/get-center sprite) (:offset maze))
                 [x0 y0] (:begin maze)
