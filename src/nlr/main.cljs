@@ -211,7 +211,7 @@
                                   :ws?
                                   (pp/optional "la")
                                   :ws?
-                                  "izquierda"
+                                  :izquierda
                                   :ws?
                                   (pp/optional "?"))
               :wall-right? (pp/seq (pp/optional (pp/or "haya" "hay"))
@@ -222,7 +222,7 @@
                                    :ws?
                                    (pp/optional "la")
                                    :ws?
-                                   "derecha"
+                                   :derecha
                                    :ws?
                                    (pp/optional "?"))
               :if (pp/seq (pp/or "si" "if")
