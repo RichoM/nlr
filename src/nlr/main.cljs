@@ -65,8 +65,12 @@
 (defmulti run* (fn [_robot instr] (:type instr)))
 
 (defn run [robot instr]
-  (if (> (swap! counter inc) 1000)
-    (throw (ex-info "LIMIT REACHED!" {:robot robot}))
+  (let [limit (js/parseInt (oget (js/document.getElementById "limit") :value))]
+    (when-not (int? limit)
+      (throw (ex-info "INVALID LIMIT!" {:robot robot})))
+    (when (>= @counter limit)
+      (throw (ex-info "LIMIT REACHED!" {:robot robot})))
+    (swap! counter inc)
     (run* robot instr)))
 
 (defn run-program [robot program]
@@ -587,10 +591,12 @@
         (pixi/set-position! [0 0])
         (pixi/add-to! (oget app :stage)))
       (let [updates-chan (a/chan (a/dropping-buffer 1))]
-        (.addEventListener (js/document.getElementById "input")
-                           "keyup" #(a/put! updates-chan true))
         (.addEventListener (js/document.getElementById "exercises")
                            "change" #(a/put! updates-chan true))
+        (.addEventListener (js/document.getElementById "limit")
+                           "keyup" #(a/put! updates-chan true))
+        (.addEventListener (js/document.getElementById "input")
+                           "keyup" #(a/put! updates-chan true))
         (start-update-loop! updates-chan)))))
 
 (defn init [& args]
