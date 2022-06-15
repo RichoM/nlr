@@ -499,7 +499,7 @@
   )
 
 (defn load-textures! []
-  (go (let [names ["1_1" "1_2" "2_1" "2_2" "3_1" "3_2" "4_1" "4_2" "5_2"]
+  (go (let [names ["1_1" "1_2" "2_1" "2_2" "3_1" "3_2" "4_1" "4_2" "5_2" "robot"]
             textures (<! (->> names
                               (map #(str "imgs/" % ".png"))
                               (map pixi/load-texture!)
@@ -544,12 +544,28 @@
           (let [[xo yo] (map + (pixi/get-center sprite) (:offset maze))
                 [x0 y0] (:begin maze)
                 program (parse (oget (js/document.getElementById "input") :value))
-                robot (run-program (make-robot maze) program)]
+                robot (run-program (make-robot maze) program)
+                robot-sprite (pixi/make-sprite! (textures "robot"))]
+            (let [[x y] (peek (:positions robot))]
+              (doto robot-sprite
+                (oset! :anchor.x 0.5)
+                (oset! :anchor.y 0.5)
+                (oset! :x (+ xo (* cell-width (- x x0))))
+                (oset! :y (+ yo (* cell-height (- y y0))))
+                (oset! :tint 0x5555ff)
+                (oset! :alpha 0.75)
+                (oset! :rotation (case (:direction robot)
+                                   ::N 0
+                                   ::E 1.57
+                                   ::S 3.14
+                                   ::W -1.57
+                                   0))
+                (pixi/add-to! container)))
             #_(draw-connections (mazes selected-exercise)
-                              [xo yo]
-                              container)
-            (oset! (js/document.getElementById "ast") 
-                   :innerText (str "INSTRUCTIONS: " @counter 
+                                [xo yo]
+                                container)
+            (oset! (js/document.getElementById "ast")
+                   :innerText (str "INSTRUCTIONS: " @counter
                                    "\nPROGRAM: " (js/JSON.stringify (clj->js program) nil 2)))
             (doto line
               (ocall! :clear)
