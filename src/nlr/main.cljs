@@ -24,6 +24,9 @@
     (and (> y1 y0) (= x0 x1)) ::S
     (and (< y1 y0) (= x0 x1)) ::N))
 
+(defn inside? [maze cell]
+  (some? (get-in maze [:cells cell])))
+
 (defn connected? [maze from to]
   (when-let [neighbours (get-in maze [:cells from])]
     (>= (.indexOf neighbours to) 0)))
@@ -574,8 +577,12 @@
                                            :alpha 1}))
               (ocall! :moveTo xo yo))
             (doseq [[from to] (partition 2 1 (:positions robot))]
-              (when-not (connected? maze from to)
-                (print "WALKING THROUGH WALLS!" [from to])))
+              (when (inside? maze from)
+                (when-not (connected? maze from to)
+                  (let [errors (js/document.getElementById "errors")]
+                    (oset! errors :innerText (str (oget errors :innerText)
+                                                  "\n" "WALKING THROUGH WALLS! "
+                                                  from " -> " to))))))
             (doseq [[x1 y1] (:positions robot)]
               (ocall! line :lineTo
                       (+ xo (* cell-width (- x1 x0)))
