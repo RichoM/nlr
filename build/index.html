@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=0.6, maximum-scale=1.0, minimum-scale=0.2, user-scalable=no">
+    <title>NLR</title>
+  </head>
+  <body>
+    <div style="float: left;">
+      <p>
+        <select name="exercises" id="exercises">
+          <option value="" selected disabled>Elegir ejercicio</option>
+          <option value="1_1">Ejercicio 1.1</option>
+          <option value="1_2">Ejercicio 1.2</option>
+          <option value="2_1">Ejercicio 2.1</option>
+          <option value="2_2">Ejercicio 2.2</option>
+          <option value="3_1">Ejercicio 3.1</option>
+          <option value="3_2">Ejercicio 3.2</option>
+          <option value="4_1">Ejercicio 4.1</option>
+          <option value="4_2">Ejercicio 4.2</option>
+          <option value="5_2">Ejercicio 5.2</option>
+        </select>
+        <input id="limit" type="text" value="1000"></input>
+      </p>
+      <p>
+        <textarea rows="20" cols="40" id="input"></textarea>
+      </p>
+      <pre id="errors" style="color:red;"></pre>
+      <pre id="ast"></pre>
+    </div>
+    <div id="pixi-canvas" class="red" style="float: left; margin: 20px; background-color: white;">
+      <pre id="variables"></pre>
+    </div>
+
+    <script src="libs/pixi.js-v6.3.0/pixi.min.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>
