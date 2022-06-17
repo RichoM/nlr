@@ -116,16 +116,14 @@
                          ::izquierda ::E}
                     ::W {::derecha ::N
                          ::izquierda ::S}}]
-    (print-robot robot)
     (update robot :direction #(get-in directions [% direction]))))
 
 (defmethod run* ::avanzar [{:keys [direction] :as robot} {:keys [steps]}]
   (let [directions {::N [1 -] ::S [1 +]
                     ::E [0 +] ::W [0 -]}
         [index f] (directions direction)]
-    (print-robot robot)
     (update robot :positions (fn [positions]
-                               (let [pos (peek positions)]                                 
+                               (let [pos (peek positions)]
                                  (conj positions (update pos index f steps)))))))
 
 (defmethod run* ::repetir [robot {:keys [times stmts]}]
@@ -177,8 +175,6 @@
       (vec (concat [current] (when (seq siblings)
                                (group-by-indent siblings)))))))
 
-
-(do
 (def grammar {:start (pp/end :lines)
               :lines (pp/separated-by :line (pp/seq :ws? (pp/or "\r\n" "\n")))
               :line (pp/seq (pp/star (pp/or "\t" " "))
@@ -310,19 +306,6 @@
 
 (defn parse [str]
   (pp/parse parser (str/lower-case str)))
-)
-
-(comment
-  
-  (parse (oget (js/document.getElementById "input") :value))
-
-  (parse 
-  "girar izq
-  avanzar")
-  (parse "Girar izq")
-  (parse "Repetir 10 veces")
-
-  )
 
 
 (defonce pixi (atom nil))
@@ -540,7 +523,7 @@
                   [7 5] [[7 4] [7 6]]
                   [7 6] [[6 6] [7 5]]}}})
 
-(comment
+(comment ;; NOTE(Richo): This code checks all mazes for inconsistent connections
 
   (doseq [[maze-name {:keys [cells]}] mazes]
     (doseq [[cell-from neighbours] cells]
@@ -558,6 +541,8 @@
                               (a/map vector)))]
         (zipmap names textures))))
 
+;; NOTE(Richo): This function draws the connections between all cells
+;; in a maze so that we can quickly see if we missed some neighbours.
 (defn draw-connections [maze offset container]
   (let [transform (fn [[x y]]
                     (let [[xo yo] offset
@@ -648,7 +633,7 @@
     (loop []
       (when (<! updates-chan)
         (<! (a/timeout 100))
-        (update-ui!)        
+        (time (update-ui!))   
         (recur)))))
 
 (defn initialize-ui! []
