@@ -52,18 +52,29 @@
         to (update from index f 1)]
     (not (connected? maze from to))))
 
+(def operators {"+" +
+                "-" -
+                "*" *
+                "/" /})
 
-(defn evaluate [robot condition]
-  (let [position (peek (:positions robot))
-        direction (:direction robot)
-        maze (:maze robot)]
-    (case condition
-      ::wall-forward? (wall-forward? maze position direction)
-      ::wall-left? (wall-left? maze position direction)
-      ::wall-right? (wall-right? maze position direction)
-      ::destination-reached? (= position (:end maze))
-      (when (= ::negated (:type condition))
-        (not (evaluate robot (:condition condition)))))))
+(defn evaluate [robot expr]
+  (if (number? expr)
+    expr
+    (let [position (peek (:positions robot))
+          direction (:direction robot)
+          maze (:maze robot)]
+      (case expr
+        ::wall-forward? (wall-forward? maze position direction)
+        ::wall-left? (wall-left? maze position direction)
+        ::wall-right? (wall-right? maze position direction)
+        ::destination-reached? (= position (:end maze))
+        (case (:type expr)
+          ::negated (not (evaluate robot (:condition expr)))
+          ::binary (let [op (operators (:op expr))
+                         left (evaluate robot (:left expr))
+                         right (evaluate robot (:right expr))]
+                     (op left right))
+          ::variable (get-in robot [:variables (:name expr)]))))))
 
 (defmulti run* (fn [_robot instr] (:type instr)))
 
@@ -143,6 +154,10 @@
     (reduce run robot stmts)
     (throw (js/Error. (str "UNKNOWN PROCEDURE: " name)))))
 
+(defmethod run* ::assignment [robot {:keys [variable value]}]
+  (assoc-in robot [:variables (:name variable)]
+            (evaluate robot value)))
+
 (defmethod run* :default [robot _] (js/console.error "ACAACA") robot)
 
 
@@ -168,7 +183,8 @@
               :lines (pp/separated-by :line (pp/seq :ws? (pp/or "\r\n" "\n")))
               :line (pp/seq (pp/star (pp/or "\t" " "))
                             (pp/optional (pp/or :avanzar :girar :repetir :if :while
-                                                :procedure :call)))
+                                                :assignment :procedure :call))
+                            :ws?)
               :number (pp/flatten (pp/plus pp/digit))
               :ws (pp/plus (pp/or " " "\t"))
               :ws? (pp/optional :ws)
@@ -243,13 +259,24 @@
                              :ws?
                              (pp/or :negated-condition :condition)
                              :ws?
-                             (pp/optional ":"))              
-              :procedure (pp/seq "para"
-                             :ws?
-                             (pp/flatten (pp/plus pp/word))
-                             :ws?
                              (pp/optional ":"))
-              :call (pp/flatten (pp/plus pp/word))})
+              :procedure (pp/seq "para"
+                                 :ws?
+                                 (pp/flatten (pp/plus pp/word))
+                                 :ws?
+                                 (pp/optional ":"))
+              :call (pp/flatten (pp/plus pp/word))
+              :variable (pp/flatten (pp/plus pp/letter))
+              :binary-operation (pp/seq (pp/or :number :variable)
+                                        :ws?
+                                        (pp/or "+" "-" "*" "/")
+                                        :ws?
+                                        (pp/or :number :variable))
+              :assignment (pp/seq :variable
+                                  :ws?
+                                  "="
+                                  :ws?
+                                  (pp/or :binary-operation :number :variable))})
 
 (def transformations
   {:number (fn [d] (js/parseInt d))
@@ -271,8 +298,13 @@
    :if (fn [[_ _ condition]] {:type ::if :condition condition})
    :while (fn [[_ _ condition]] {:type ::while :condition condition})
    :procedure (fn [[_ _ name]] {:type ::procedure :name (str/lower-case name)})
-   :call (fn [name] {:type ::call :name (str/lower-case name)})}
-  )
+   :call (fn [name] {:type ::call :name (str/lower-case name)})
+   :variable (fn [name] {:type ::variable :name (str/lower-case name)})
+   :binary-operation (fn [[left _ op _ right]]
+                       {:type ::binary :left left :op op :right right})
+   :assignment (fn [[variable _ _ _ value]] {:type ::assignment
+                                             :variable variable
+                                             :value value})})
 
 (def parser (pp/compose grammar transformations))
 
@@ -584,6 +616,9 @@
             #_(draw-connections (mazes selected-exercise)
                                 [xo yo]
                                 container)
+            (when-let [variables (:variables robot)]
+              (oset! (js/document.getElementById "variables")
+                     :innerText (str "VARIABLES: " variables)))
             (oset! (js/document.getElementById "ast")
                    :innerText (str "INSTRUCTIONS: " @counter
                                    "\nPROGRAM: " (js/JSON.stringify (clj->js program) nil 2)))
